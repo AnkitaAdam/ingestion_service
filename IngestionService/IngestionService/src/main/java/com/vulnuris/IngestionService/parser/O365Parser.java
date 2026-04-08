@@ -78,7 +78,15 @@ public class O365Parser implements LogParser {
                 extra.put("operationCount", log.get("OperationCount"));
             }
 
-            extractExtendedProperties(log, extra);
+            if (log.containsKey("ExtendedProperties")) {
+
+                Map<String, String> extProps =
+                        parseExtendedProperties(log.get("ExtendedProperties"));
+
+                if (!extProps.isEmpty()) {
+                    extra.put("extendedProperties", extProps);
+                }
+            }
 
             // ---------- Build ----------
             return CesEvent.builder()
@@ -221,26 +229,30 @@ public class O365Parser implements LogParser {
         if (v != null) map.put(k, v);
     }
 
-    private void extractExtendedProperties(Map<String, Object> log, Map<String, Object> extra) {
+    private Map<String, String> parseExtendedProperties(Object extObj) {
 
-        Object ext = log.get("ExtendedProperties");
+        Map<String, String> map = new HashMap<>();
 
-        if (!(ext instanceof List<?> list)) return;
+        if (!(extObj instanceof List<?> list)) {
+            return map;
+        }
 
         for (Object item : list) {
-            if (!(item instanceof Map<?, ?> map)) continue;
+            if (item instanceof Map<?, ?> entry) {
 
-            Object nameObj = map.get("Name");
-            Object valueObj = map.get("Value");
+                Object nameObj = entry.get("Name");
+                Object valueObj = entry.get("Value");
 
-            if (nameObj == null || valueObj == null) continue;
+                if (nameObj != null && valueObj != null) {
+                    String key = nameObj.toString();
+                    String value = valueObj.toString();
 
-            String key = nameObj.toString().trim();
-            String value = valueObj.toString().trim();
-
-            if (!key.isEmpty()) {
-                extra.put(key, value);
+                    map.put(key, value);
+                }
             }
         }
+
+        return map;
     }
+
 }
