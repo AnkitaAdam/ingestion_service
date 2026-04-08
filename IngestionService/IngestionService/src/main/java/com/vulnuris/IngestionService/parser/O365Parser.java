@@ -78,9 +78,7 @@ public class O365Parser implements LogParser {
                 extra.put("operationCount", log.get("OperationCount"));
             }
 
-            if (log.containsKey("ExtendedProperties")) {
-                extra.put("extendedProperties", log.get("ExtendedProperties"));
-            }
+            extractExtendedProperties(log, extra);
 
             // ---------- Build ----------
             return CesEvent.builder()
@@ -221,5 +219,28 @@ public class O365Parser implements LogParser {
 
     private void putIfNoNull(Map<String, Object> map, String k, Object v) {
         if (v != null) map.put(k, v);
+    }
+
+    private void extractExtendedProperties(Map<String, Object> log, Map<String, Object> extra) {
+
+        Object ext = log.get("ExtendedProperties");
+
+        if (!(ext instanceof List<?> list)) return;
+
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) continue;
+
+            Object nameObj = map.get("Name");
+            Object valueObj = map.get("Value");
+
+            if (nameObj == null || valueObj == null) continue;
+
+            String key = nameObj.toString().trim();
+            String value = valueObj.toString().trim();
+
+            if (!key.isEmpty()) {
+                extra.put(key, value);
+            }
+        }
     }
 }

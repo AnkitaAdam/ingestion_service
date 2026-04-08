@@ -57,6 +57,7 @@ public class CloudTrailParser implements LogParser {
             String arn = getString(userIdentity, "arn");
             String accessKeyId = getString(userIdentity, "accessKeyId");
 
+
             // ---------- NETWORK ----------
             String srcIp = getString(log, "sourceIPAddress");
 
@@ -83,13 +84,18 @@ public class CloudTrailParser implements LogParser {
             if (srcIp != null) iocs.add(srcIp);
             if (accessKeyId != null) iocs.add(accessKeyId);
 
+
             // ---------- CORRELATION KEYS ----------
+            String readOnly = getString(log, "readOnly");
+            String managementEvent =  getString(log, "managementEvent");
             Map<String, String> correlation = new HashMap<>();
 
             putIfNotNull(correlation, "userName", userName);
             putIfNotNull(correlation, "userArn", arn);
             putIfNotNull(correlation, "srcIp", srcIp);
             putIfNotNull(correlation, "accessKeyId", accessKeyId);
+            putIfNotNull(correlation, "readOnly", readOnly);
+            putIfNotNull(correlation, "managementEvent", managementEvent);
 
             // ---------- EXTRA ----------
             Map<String, Object> extra = new HashMap<>();

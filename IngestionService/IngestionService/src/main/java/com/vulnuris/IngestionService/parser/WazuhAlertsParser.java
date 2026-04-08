@@ -39,7 +39,7 @@ public class WazuhAlertsParser implements LogParser{
 
             String rule = getText(root, "rule", "id");
 
-            String tsOriginal = getText(root, "@timestamp");
+            String tsOriginal = getText(root, "timestamp");
             Instant tsUtc = parseTime(tsOriginal);
 
             String host = getText(root, "agent", "name");
@@ -71,6 +71,8 @@ public class WazuhAlertsParser implements LogParser{
 
             // ---------- MESSAGE ----------
             String message = getText(root, "rule", "description");
+
+            String mapppedAction = mapAction(action, message);
 
             // ---------- IOC ----------
             List<String> iocs = extractIocs(root, srcIp, dstIp);
@@ -121,7 +123,7 @@ public class WazuhAlertsParser implements LogParser{
                     .dstPort(dstPort)
 
                     .protocol(protocol)
-                    .action(action)
+                    .action(mapppedAction)
 
                     .object(object)
                     .result(result)
@@ -185,11 +187,23 @@ public class WazuhAlertsParser implements LogParser{
     // ---------- CUSTOM EXTRACTION ----------
 
     private String extractUser(JsonNode root) {
+
         String user = getNested(root, "data", "user");
-        if (user == null) {
-            user = getText(root, "agent", "name");
-        }
-        return user;
+
+        String srcUser = getNested(root, "data", "srcuser");
+
+        String targetUser = getText(root, "data", "win", "eventdata", "targetUserName");
+
+        String agent = getText(root, "agent", "name");
+
+        String srcIP = extractSrcIp(root);
+
+        if (user != null) return user;
+        if (srcUser != null) return srcUser;
+        if (targetUser != null) return targetUser;
+        if (agent != null) return agent;
+
+        return srcIP; // last fallback
     }
 
     private String extractSrcIp(JsonNode root) {
@@ -197,7 +211,7 @@ public class WazuhAlertsParser implements LogParser{
 
         // Windows fallback
         if (ip == null) {
-            ip = getText(root, "data", "win", "eventData", "ipAddress");
+            ip = getText(root, "data", "win", "eventdata", "ipAddress");
         }
         return ip;
     }
@@ -230,6 +244,7 @@ public class WazuhAlertsParser implements LogParser{
         addIfPresent(iocs, getNested(root, "data", "md5_after"));
         addIfPresent(iocs, getNested(root, "data", "sha1_after"));
         addIfPresent(iocs, getNested(root, "data", "url"));
+        addIfPresent(iocs, getNested(root, "agent", "ip"));
 
         return iocs;
     }
@@ -252,5 +267,12 @@ public class WazuhAlertsParser implements LogParser{
         } catch (Exception e) {
             return "LOW";
         }
+    }
+
+    private String mapAction(String action, String message){
+
+        if (action != null) return action;
+        if (message != null) return message;
+        return "UNKNOWN";
     }
 }
