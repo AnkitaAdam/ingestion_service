@@ -3,6 +3,7 @@ package com.vulnuris.IngestionService.parser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.PaloAltoSeverityService;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -17,10 +18,16 @@ import java.util.stream.Stream;
 public class PaloAltoFirewallParser implements LogParser {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final PaloAltoSeverityService paloAltoSeverityService;
+
+    public PaloAltoFirewallParser(PaloAltoSeverityService paloAltoSeverityService) {
+        this.paloAltoSeverityService = paloAltoSeverityService;
+    }
 
     private static final DateTimeFormatter PA_TIME =
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss")
                     .withZone(ZoneOffset.UTC);
+
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -108,6 +115,10 @@ public class PaloAltoFirewallParser implements LogParser {
             putIfNoNull(extra,"bytes", log.get("bytes"));
             putIfNoNull(extra,"packets", log.get("packets"));
 
+            // ---------- SEVERITY ----------
+            double severityScore = paloAltoSeverityService.calculateSeverity(log);
+            String severity = paloAltoSeverityService.toSeverityLabel(severityScore);
+
 
             // ---------- BUILD ----------
             return CesEvent.builder()
@@ -132,7 +143,8 @@ public class PaloAltoFirewallParser implements LogParser {
 
                     .object(category)
                     .result(result)
-                    .severity(safeString(log.get("severity")))
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(message)
 

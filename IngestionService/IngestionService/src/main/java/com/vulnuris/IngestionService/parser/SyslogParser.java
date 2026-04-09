@@ -1,6 +1,7 @@
 package com.vulnuris.IngestionService.parser;
 
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.SyslogSeverityService;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -15,6 +16,12 @@ import java.util.stream.Stream;
 
 @Component
 public class SyslogParser implements LogParser {
+
+    private final SyslogSeverityService syslogSeverityService;
+
+    public SyslogParser(SyslogSeverityService syslogSeverityService) {
+        this.syslogSeverityService = syslogSeverityService;
+    }
 
     private static final Pattern SYSLOG_PATTERN = Pattern.compile(
             "^<(?<pri>\\d+)>\\d+\\s+" +
@@ -36,6 +43,7 @@ public class SyslogParser implements LogParser {
 
     private static final Pattern USER_PATTERN =
             Pattern.compile("user\\s+(\\w+)");
+
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -76,7 +84,6 @@ public class SyslogParser implements LogParser {
 
             String action = detectAction(msg);
             String result = detectResult(msg);
-            String severity = mapSeverity(pri);
 
             List<String> iocs = extractIOCs(msg);
 
@@ -87,6 +94,10 @@ public class SyslogParser implements LogParser {
             putIfNoNull(extra, "app", app);
             putIfNoNull(extra, "pid", pid);
             putIfNoNull(extra, "pri", pri);
+
+            // ---------- SEVERITY ----------
+            double severityScore = syslogSeverityService.calculateSeverity(line);
+            String severity = syslogSeverityService.toSeverityLabel(severityScore);
 
             return CesEvent.builder()
                     .eventId(UUID.randomUUID().toString())
@@ -110,7 +121,8 @@ public class SyslogParser implements LogParser {
                     .action(action)
                     .object(app)
                     .result(result)
-                    .severity(severity)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(msg)
 
@@ -216,26 +228,6 @@ public class SyslogParser implements LogParser {
         return "UNKNOWN";
     }
 
-    private String mapSeverity(String pri) {
-        try {
-            int val = Integer.parseInt(pri);
-            int severity = val % 8;
-
-            switch (severity) {
-                case 0: return "EMERGENCY";
-                case 1: return "ALERT";
-                case 2: return "CRITICAL";
-                case 3: return "ERROR";
-                case 4: return "WARNING";
-                case 5: return "NOTICE";
-                case 6: return "INFO";
-                case 7: return "DEBUG";
-                default: return null;
-            }
-        } catch (Exception e) {
-            return null;
-        }
-    }
 
     private Map<String, String> buildCorrelationKeys(String host, String user,
                                                      String srcIp, String dstIp,

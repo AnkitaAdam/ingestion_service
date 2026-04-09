@@ -35,7 +35,8 @@ public class CesEvent {
     private String action;
     private String object;
     private String result;
-    private String severity;
+    private double severity;
+    private String severityLabel;
 
     private String message;
 

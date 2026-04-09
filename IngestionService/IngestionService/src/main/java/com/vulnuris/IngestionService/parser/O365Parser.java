@@ -3,6 +3,7 @@ package com.vulnuris.IngestionService.parser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.O365SeverityService;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -17,6 +18,11 @@ import java.util.stream.Stream;
 public class O365Parser implements LogParser {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final O365SeverityService o365SeverityService;
+
+    public O365Parser(O365SeverityService o365SeverityService) {
+        this.o365SeverityService = o365SeverityService;
+    }
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -59,6 +65,10 @@ public class O365Parser implements LogParser {
 
             // ---------- Message ----------
             String message = buildMessage(log, user, action, srcIp);
+
+            // ---------- SEVERITY ----------
+            double severityScore = o365SeverityService.calculateSeverity(log);
+            String severity = o365SeverityService.toSeverityLabel(severityScore);
 
             // ---------- IOC ----------
             List<String> iocs = extractIocs(log, srcIp);
@@ -111,7 +121,8 @@ public class O365Parser implements LogParser {
                     .object(object)
 
                     .result(result)
-                    .severity(null)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(message)
 

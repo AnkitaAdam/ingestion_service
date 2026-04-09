@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.AwsSeverityService;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -16,6 +17,11 @@ import java.util.stream.Stream;
 public class CloudTrailParser implements LogParser {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final AwsSeverityService awsSeverityService;
+
+    public CloudTrailParser(AwsSeverityService awsSeverityService) {
+        this.awsSeverityService = awsSeverityService;
+    }
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -109,6 +115,10 @@ public class CloudTrailParser implements LogParser {
             // ---------- MESSAGE ----------
             String message = buildMessage(action, object, userName, srcIp);
 
+            // ---------- SEVERITY ----------
+            double severityScore = awsSeverityService.calculateSeverity(log);
+            String severity = awsSeverityService.toSeverityLabel(severityScore);
+
             return CesEvent.builder()
                     .eventId(eventId)
 
@@ -130,7 +140,8 @@ public class CloudTrailParser implements LogParser {
                     .action(action)
                     .object(object)
                     .result(result)
-                    .severity(null)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(message)
 

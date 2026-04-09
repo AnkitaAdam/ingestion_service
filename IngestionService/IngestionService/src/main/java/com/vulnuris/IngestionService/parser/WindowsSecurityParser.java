@@ -3,6 +3,7 @@ package com.vulnuris.IngestionService.parser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.WindowsSeverityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -18,9 +19,15 @@ import java.util.stream.Stream;
 public class WindowsSecurityParser implements LogParser {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final WindowsSeverityService windowsSeverityService;
+
+    public WindowsSecurityParser(WindowsSeverityService windowsSeverityService) {
+        this.windowsSeverityService = windowsSeverityService;
+    }
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -52,6 +59,7 @@ public class WindowsSecurityParser implements LogParser {
             String message = safeString(logs.get("Message"));
             Integer eventId = safeInt(logs.get("EventID"));
             String severityStr = safeString(logs.get("Severity"));
+            String severityValue = safeInt(logs.get("SeverityValue")).toString();
 
             Map<String, Object> eventData =
                     (Map<String, Object>) logs.getOrDefault("EventData", Collections.emptyMap());
@@ -83,6 +91,7 @@ public class WindowsSecurityParser implements LogParser {
             putIfNotNull(correlationKeys, "host", hostname);
             putIfNotNull(correlationKeys, "srcIp", srcIp);
             putIfNotNull(correlationKeys, "eventId", String.valueOf(eventId));
+            putIfNotNull(correlationKeys, "severityMsg", severityStr);
 
             // -------- EXTRA --------
             Map<String, Object> extra = new HashMap<>();
@@ -91,6 +100,10 @@ public class WindowsSecurityParser implements LogParser {
             putIfNoNull(extra, "logonType", safeString(eventData.get("LogonType")));
             putIfNoNull(extra, "processName", safeString(eventData.get("LogonProcessName")));
             putIfNoNull(extra, "authPackage", safeString(eventData.get("AuthenticationPackageName")));
+
+            // ---------- SEVERITY ----------
+            double severityScore = windowsSeverityService.calculateSeverity(logs);
+            String severity = windowsSeverityService.toSeverityLabel(severityScore);
 
             return CesEvent.builder()
                     .eventId(UUID.randomUUID().toString())
@@ -116,7 +129,8 @@ public class WindowsSecurityParser implements LogParser {
                     .object(eventId != null ? "event_" + eventId : null)
 
                     .result(result)
-                    .severity(severityStr)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(message)
 

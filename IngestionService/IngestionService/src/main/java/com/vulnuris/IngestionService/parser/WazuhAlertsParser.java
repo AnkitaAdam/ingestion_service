@@ -3,6 +3,7 @@ package com.vulnuris.IngestionService.parser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.WazuhSeverityService;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -17,6 +18,11 @@ import java.util.stream.Stream;
 public class WazuhAlertsParser implements LogParser{
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final WazuhSeverityService  wazuhSeverityService;
+
+    public WazuhAlertsParser(WazuhSeverityService wazuhSeverityService) {
+        this.wazuhSeverityService = wazuhSeverityService;
+    }
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -66,8 +72,8 @@ public class WazuhAlertsParser implements LogParser{
             String result = mapResult(action);
 
             // ---------- SEVERITY ----------
-            String severity = getText(root, "rule", "level");
-            String mappedSeverity = mapSeverity(severity);
+            double severityScore = wazuhSeverityService.calculateSeverity(root);
+            String severity = wazuhSeverityService.toSeverityLabel(severityScore);
 
             // ---------- MESSAGE ----------
             String message = getText(root, "rule", "description");
@@ -127,7 +133,8 @@ public class WazuhAlertsParser implements LogParser{
 
                     .object(object)
                     .result(result)
-                    .severity(mappedSeverity)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(message)
 
@@ -251,22 +258,6 @@ public class WazuhAlertsParser implements LogParser{
 
     private void addIfPresent(List<String> list, String val) {
         if (val != null && !val.isBlank()) list.add(val);
-    }
-
-    private String mapSeverity(String levelStr) {
-        try {
-            if (levelStr == null) return "LOW";
-
-            int level = Integer.parseInt(levelStr);
-
-            if (level <= 3) return "LOW";
-            if (level <= 6) return "MEDIUM";
-            if (level <= 9) return "HIGH";
-            return "CRITICAL";
-
-        } catch (Exception e) {
-            return "LOW";
-        }
     }
 
     private String mapAction(String action, String message){

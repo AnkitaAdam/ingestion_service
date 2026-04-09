@@ -2,6 +2,7 @@ package com.vulnuris.IngestionService.parser;
 
 
 import com.vulnuris.IngestionService.model.CesEvent;
+import com.vulnuris.IngestionService.service.severity.WebServerSeverityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -18,12 +19,19 @@ import java.util.stream.Stream;
 @Component
 public class WebAccessLogParser implements LogParser {
 
+    private final WebServerSeverityService webServerSeverityService;
+
+    public WebAccessLogParser(WebServerSeverityService webServerSeverityService) {
+        this.webServerSeverityService = webServerSeverityService;
+    }
+
     private static final Pattern LOG_PATTERN = Pattern.compile(
             "^(\\S+) - - \\[(.*?)\\] \"(\\S+) (.*?) (\\S+)\" (\\d{3}) (\\d+) \"(.*?)\" \"(.*?)\"$"
     );
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z", Locale.ENGLISH);
+
 
     @Override
     public Stream<CesEvent> parseStream(InputStream input, String filename) {
@@ -67,7 +75,6 @@ public class WebAccessLogParser implements LogParser {
 
             String action = detectAction(method, url);
             String result = mapResult(status);
-            String severity = mapSeverity(status);
 
             List<String> iocs = extractIocs(srcIp, url);
 
@@ -81,6 +88,10 @@ public class WebAccessLogParser implements LogParser {
             putIfNoNull(extra, "bytes", bytes);
             putIfNoNull(extra, "referrer", referrer);
             putIfNoNull(extra, "userAgent", userAgent);
+
+            // ---------- SEVERITY ----------
+            double severityScore = webServerSeverityService.calculateSeverity(line);
+            String severity = webServerSeverityService.toSeverityLabel(severityScore);
 
             return CesEvent.builder()
                     .eventId(UUID.randomUUID().toString())
@@ -105,7 +116,8 @@ public class WebAccessLogParser implements LogParser {
                     .object(url)
 
                     .result(result)
-                    .severity(severity)
+                    .severity(severityScore)
+                    .severityLabel(severity)
 
                     .message(method + " " + url + " -> " + status)
 
@@ -142,12 +154,6 @@ public class WebAccessLogParser implements LogParser {
         return "UNKNOWN";
     }
 
-    private String mapSeverity(Integer status) {
-        if (status == null) return "LOW";
-        if (status >= 500) return "HIGH";
-        if (status >= 400) return "MEDIUM";
-        return "LOW";
-    }
 
     private void putIfNoNull(Map<String, Object> map, String key, Object value) {
         if (value != null) {
