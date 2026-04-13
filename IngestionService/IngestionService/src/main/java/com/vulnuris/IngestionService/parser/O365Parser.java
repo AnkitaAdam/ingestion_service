@@ -12,10 +12,27 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 @Component
 public class O365Parser implements LogParser {
+
+    private static final Pattern DOMAIN_PATTERN =
+            Pattern.compile("\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}\\b");
+
+    private static final Pattern MD5_PATTERN =
+            Pattern.compile("\\b[a-f0-9]{32}\\b");
+
+    private static final Pattern SHA1_PATTERN =
+            Pattern.compile("\\b[a-f0-9]{40}\\b");
+
+    private static final Pattern SHA256_PATTERN =
+            Pattern.compile("\\b[a-f0-9]{64}\\b");
+
+    private static final Pattern IP_PATTERN =
+            Pattern.compile("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b");
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final O365SeverityService o365SeverityService;
@@ -81,6 +98,7 @@ public class O365Parser implements LogParser {
             putIfNotNull(correlation, "workload", workload);
 
             // ---------- Extra ----------
+            boolean isInternalIp = isInternalIp(srcIp);
             Map<String, Object> extra = new HashMap<>();
             putIfNoNull(extra, "o365WorkLoad", workload);
 
@@ -97,6 +115,8 @@ public class O365Parser implements LogParser {
                     extra.put("extendedProperties", extProps);
                 }
             }
+
+            putIfNoNull(extra, "isInternalIP", isInternalIp);
 
             // ---------- Build ----------
             return CesEvent.builder()
@@ -183,34 +203,139 @@ public class O365Parser implements LogParser {
     }
 
     private List<String> extractIocs(Map<String, Object> log, String srcIp) {
-        List<String> iocs = new ArrayList<>();
 
-        if (srcIp != null) iocs.add(srcIp);
+        Set<String> iocSet = new LinkedHashSet<>();
 
+        // ---------- IP ----------
+        String normalizedIp = normalizeIoc(srcIp);
+        if (normalizedIp != null && !normalizedIp.isBlank()) {
+            iocSet.add(normalizedIp);
+        }
+
+        // ---------- User ----------
         String user = safeString(log.get("UserId"));
-        if (user != null && user.contains("@")) {
-            iocs.add(user);
+        String normalizedUser = normalizeIoc(user);
+        if (normalizedUser != null && normalizedUser.contains("@")) {
+            iocSet.add(normalizedUser);
         }
 
+        // ---------- Object ----------
         String object = safeString(log.get("ObjectId"));
-        if (object != null && object.contains("@")) {
-            iocs.add(object);
+        String normalizedObject = normalizeIoc(object);
+        if (normalizedObject != null) {
+
+            if (normalizedObject.contains("@") || isUrl(normalizedObject)) {
+                iocSet.add(normalizedObject);
+            }
         }
 
-        String sourceRelativeUrl = safeString(log.get("SourceRelativeUrl"));
-        if(sourceRelativeUrl != null){
-            iocs.add(sourceRelativeUrl);
-        }
-
+        // ---------- SiteUrl ----------
         String siteUrl = safeString(log.get("SiteUrl"));
-        if(siteUrl != null){
-            iocs.add(siteUrl);
+        String normalizedUrl = normalizeIoc(siteUrl);
+        if (normalizedUrl != null && isUrl(normalizedUrl)) {
+            iocSet.add(normalizedUrl);
         }
 
-        return iocs;
+        // ---------- ExtendedProperties ----------
+        Object ext = log.get("ExtendedProperties");
+
+        if (ext instanceof List<?>) {
+            for (Object item : (List<?>) ext) {
+
+                if (item instanceof Map<?, ?> map) {
+
+                    Object val = map.get("Value");
+
+                    if (val != null) {
+                        String normalizedVal = normalizeIoc(val.toString());
+
+                        if (normalizedVal != null &&
+                                !normalizedVal.isBlank() &&
+                                (normalizedVal.contains("@") || isUrl(normalizedVal))) {
+
+                            iocSet.add(normalizedVal);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<String, Object> entry : log.entrySet()) {
+
+            String key = entry.getKey();
+
+            // Skip already processed fields
+            if ("UserId".equalsIgnoreCase(key) ||
+                    "ObjectId".equalsIgnoreCase(key) ||
+                    "SiteUrl".equalsIgnoreCase(key) ||
+                    "ClientIP".equalsIgnoreCase(key)) {
+                continue;
+            }
+
+            Object value = entry.getValue();
+
+            if (value instanceof String str) {
+                extractFromText(str, iocSet);
+            }
+
+            if (value instanceof Map<?, ?> nestedMap) {
+                for (Object v : nestedMap.values()) {
+                    if (v instanceof String str) {
+                        extractFromText(str, iocSet);
+                    }
+                }
+            }
+
+            if (value instanceof List<?> list) {
+                for (Object item : list) {
+
+                    if (item instanceof String str) {
+                        extractFromText(str, iocSet);
+                    }
+
+                    if (item instanceof Map<?, ?> map) {
+                        for (Object v : map.values()) {
+                            if (v instanceof String str) {
+                                extractFromText(str, iocSet);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---------- Final ----------
+        return new ArrayList<>(iocSet);
     }
 
 
+    private String normalizeIoc(String val) {
+        return val == null ? null : val.trim().toLowerCase();
+    }
+
+    private boolean isUrl(String value) {
+
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String val = value.trim().toLowerCase();
+
+        try {
+            // Basic fast checks (avoid heavy parsing)
+            if (!(val.startsWith("http://") || val.startsWith("https://"))) {
+                return false;
+            }
+
+            // Validate using URI
+            java.net.URI uri = new java.net.URI(val);
+
+            return uri.getHost() != null;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     private String buildMessage(Map<String, Object> log,
                                 String user,
@@ -264,6 +389,72 @@ public class O365Parser implements LogParser {
         }
 
         return map;
+    }
+
+    private boolean isInternalIp(String ip) {
+
+        if (ip == null || ip.isBlank()) return false;
+
+        return ip.startsWith("10.") ||
+                ip.startsWith("192.168.") ||
+                ip.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*") ||
+                ip.equals("127.0.0.1") ||
+                ip.equalsIgnoreCase("localhost");
+    }
+
+    private void extractFromText(String text, Set<String> iocSet) {
+
+        if (text == null || text.isBlank()) return;
+
+        String normalized = text.toLowerCase();
+
+        // -------- Domains --------
+        Matcher domainMatcher = DOMAIN_PATTERN.matcher(normalized);
+        while (domainMatcher.find()) {
+            addSafe(iocSet, domainMatcher.group());
+        }
+
+        // -------- IPs --------
+        Matcher ipMatcher = IP_PATTERN.matcher(normalized);
+        while (ipMatcher.find()) {
+            addSafe(iocSet, ipMatcher.group());
+        }
+
+        // -------- Hashes --------
+        addMatches(normalized, MD5_PATTERN, iocSet);
+        addMatches(normalized, SHA1_PATTERN, iocSet);
+        addMatches(normalized, SHA256_PATTERN, iocSet);
+    }
+
+    private void addMatches(String text, Pattern pattern, Set<String> iocSet) {
+
+        Matcher matcher = pattern.matcher(text);
+
+        while (matcher.find()) {
+            addSafe(iocSet, matcher.group());
+        }
+    }
+
+    private void addSafe(Set<String> set, String val) {
+
+        String normalized = normalizeIoc(val);
+
+        if (normalized != null && !normalized.isBlank()) {
+            set.add(normalized);
+        }
+    }
+
+    private void addMatches(String text, String regex, Set<String> iocSet) {
+
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile(regex).matcher(text);
+
+        while (matcher.find()) {
+            String hash = normalizeIoc(matcher.group());
+            if (hash != null && !hash.isBlank()) {
+                iocSet.add(hash);
+            }
+        }
     }
 
 }

@@ -106,6 +106,8 @@ public class PaloAltoFirewallParser implements LogParser {
             putIfNotNull(correlation, "sessionId", safeString(log.get("session_id")));
 
             // ---------- EXTRA ----------
+            boolean isInternalIp = isInternalIp(srcIp);
+
             Map<String, Object> extra = new HashMap<>();
             putIfNoNull(extra,"natSrcIp", natSrc);
             putIfNoNull(extra,"natDstIp", natDst);
@@ -114,6 +116,8 @@ public class PaloAltoFirewallParser implements LogParser {
             putIfNoNull(extra,"direction", safeString(log.get("direction")));
             putIfNoNull(extra,"bytes", log.get("bytes"));
             putIfNoNull(extra,"packets", log.get("packets"));
+
+            putIfNoNull(extra, "isInternalIP", isInternalIp);
 
             // ---------- SEVERITY ----------
             double severityScore = paloAltoSeverityService.calculateSeverity(log);
@@ -222,5 +226,16 @@ public class PaloAltoFirewallParser implements LogParser {
                 ip.startsWith("172.18.") ||
                 ip.startsWith("172.19.") ||
                 ip.startsWith("172.2"));
+    }
+
+    private boolean isInternalIp(String ip) {
+
+        if (ip == null || ip.isBlank()) return false;
+
+        return ip.startsWith("10.") ||
+                ip.startsWith("192.168.") ||
+                ip.matches("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*") ||
+                ip.equals("127.0.0.1") ||
+                ip.equalsIgnoreCase("localhost");
     }
 }

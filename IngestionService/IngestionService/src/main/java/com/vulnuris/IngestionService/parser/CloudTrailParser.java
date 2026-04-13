@@ -82,7 +82,7 @@ public class CloudTrailParser implements LogParser {
             }
 
             // ---------- RESULT ----------
-            String result = (errorCode == null) ? "SUCCESS" : "FAILURE";
+            String result = detectResult(errorCode, errorMessage);
 
             // ---------- IOC EXTRACTION ----------
             List<String> iocs = new ArrayList<>();
@@ -190,5 +190,20 @@ public class CloudTrailParser implements LogParser {
 
     private String safe(String val) {
         return val == null ? "unknown" : val;
+    }
+
+    private String detectResult(String errorCode, String errorMessage){
+
+        boolean hasErrorCode = errorCode != null && !errorCode.isBlank();
+        boolean hasErrorMessage = errorMessage != null && !errorMessage.isBlank();
+
+        boolean messageIndicatesFailure = hasErrorMessage &&
+                errorMessage.toLowerCase().matches(".*(denied|unauthorized|not authorized|failed|error|forbidden).*");
+
+        boolean isFailure = hasErrorCode || messageIndicatesFailure;
+
+        String result = isFailure ? "FAILURE" : "SUCCESS";
+
+        return result;
     }
 }
