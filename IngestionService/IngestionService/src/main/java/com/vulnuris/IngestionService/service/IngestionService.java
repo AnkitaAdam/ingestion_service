@@ -22,34 +22,6 @@ public class IngestionService {
     private final KafkaProducerService kafkaProducer;
     private final LogStreamService logStreamService;
 
-//    @Async
-//    public void processFiles(List<MultipartFile> files, IngestionContext  ingestionContext) {
-//
-//        logStreamService.send(ingestionContext.getBundleId(), "📂 Files received");
-//
-//        for (MultipartFile file : files) {
-//
-//            logStreamService.send(ingestionContext.getBundleId(), "🔍 Detecting parser...");
-//            LogParser parser = parserFactory.getParser(file, ingestionContext);
-//            logStreamService.send(ingestionContext.getBundleId(), "🚀 Parsing started");
-//
-//            try (InputStream is = file.getInputStream()) {
-//
-//                logStreamService.send(ingestionContext.getBundleId(), "📤 Sending to Kafka");
-////                parser.parseStream(is, file.getOriginalFilename())
-////                        .peek(event -> event.setBundleId(ingestionContext.getBundleId())) //  IMPORTANT
-////                        .forEach(kafkaProducer::send(ingestionContext));
-//
-//                parser.parseStream(is, file.getOriginalFilename())
-//                        .peek(event -> event.setBundleId(ingestionContext.getBundleId()))
-//                        .forEach(event -> kafkaProducer.send(event, ingestionContext));
-//
-//            } catch (Exception e) {
-//                throw new RuntimeException("Error processing file: " + file.getOriginalFilename(), e);
-//            }
-//        }
-//    }
-
     @Async
     public void processFilesFromDisk(List<String> filePaths, IngestionContext ingestionContext) throws InterruptedException {
 
@@ -88,11 +60,6 @@ public class IngestionService {
 
                 throw new RuntimeException("Error processing file: " + file.getName(), e);
 
-            } finally {
-                // 🔥 IMPORTANT: cleanup
-                if (file.exists()) {
-                    file.delete();
-                }
             }
         }
 

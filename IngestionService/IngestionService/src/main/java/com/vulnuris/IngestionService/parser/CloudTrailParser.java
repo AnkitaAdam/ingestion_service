@@ -1,7 +1,5 @@
 package com.vulnuris.IngestionService.parser;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vulnuris.IngestionService.model.CesEvent;
 import com.vulnuris.IngestionService.service.severity.AwsSeverityService;

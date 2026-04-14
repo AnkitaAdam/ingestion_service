@@ -23,33 +23,18 @@ public class LogStreamService {
     }
 
     public void send(String bundleId, String message) {
-//        SseEmitter emitter = emitters.get(bundleId);
-//
-//        if (emitter != null) {
-//            try {
-//                System.out.println("auuuu");
-//                emitter.send(message);
-//            } catch (Exception e) {
-//                e.printStackTrace();
-//                System.out.println("exception");
-//                emitter.complete();
-//                emitters.remove(bundleId);
-//            }
-//        }else{
-//            System.out.println("no emitter");
-//        }
 
-        System.out.println("📤 Attempting to send log for: " + bundleId); // 👈 ADD
+        System.out.println("📤 Attempting to send log for: " + bundleId);
 
         SseEmitter emitter = emitters.get(bundleId);
 
         if (emitter == null) {
-            System.out.println("❌ No emitter found for: " + bundleId); // 👈 ADD
+            System.out.println("❌ No emitter found for: " + bundleId);
             return;
         }
 
         try {
-            System.out.println("✅ Sending log: " + message); // 👈 ADD
+            System.out.println("✅ Sending log: " + message);
 
             emitter.send(SseEmitter.event().data(message));
 

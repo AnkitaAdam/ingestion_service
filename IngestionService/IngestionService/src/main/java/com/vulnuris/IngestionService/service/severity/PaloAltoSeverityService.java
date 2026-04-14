@@ -82,7 +82,6 @@ public class PaloAltoSeverityService {
         return Math.round(Math.min(finalScore, 10.0) * 100.0) / 100.0;
     }
 
-    // ================= HELPERS =================
 
     private String getString(Map<String, Object> map, String key) {
         Object val = map.get(key);

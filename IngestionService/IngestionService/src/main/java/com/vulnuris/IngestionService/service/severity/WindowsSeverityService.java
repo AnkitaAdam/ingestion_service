@@ -41,18 +41,18 @@ public class WindowsSeverityService {
         double baseScore = EVENT_ID_FLOORS.getOrDefault(eventId, 3.0);
         double multiplier = 1.0;
 
-        // 🔴 Failure events are more suspicious
+
         if (eventType.contains("FAIL")) {
             multiplier *= 1.3;
         }
 
-        // 🔴 Admin / privileged group impact
+
         if (targetGroup != null &&
                 (HIGH_RISK_GROUPS.contains(targetGroup) || targetGroup.contains("admin"))) {
             multiplier *= 1.4;
         }
 
-        // 🔴 Lateral movement (different user acting on another)
+
         if (isDifferentUser(subjectUser, targetUser)) {
             multiplier *= 1.2;
         }

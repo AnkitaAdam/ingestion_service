@@ -97,8 +97,6 @@ public class AwsSeverityService {
         return "INFO";
     }
 
-    // ---------- HELPERS ----------
-
     private String get(Map<String, Object> map, String key) {
         if (map == null || key == null) return "";
         Object val = map.get(key);
